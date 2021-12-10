@@ -1,0 +1,334 @@
+version: "3.6"
+services:
+  tomcat:
+    image: tomcat
+    container_name: tomcat
+    networks:
+      - hadoopspark
+    volumes:
+      - shared-workspace:/opt/workspace
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+    ports:
+      - 8080:8080
+
+  namenode:
+    image: hadoop-base
+    container_name: namenode
+    networks:
+      - hadoopspark
+    volumes:
+      - shared-workspace:/opt/workspace
+      - namenode:/hadoop/dfs/specificmount
+    environment:
+      - CLUSTER_NAME=test
+    env_file:
+      - ./hadoop.env
+    command: /hadoop-runscripts/run_namenode.sh
+    ports:
+      - 9870:9870
+      - 9000:9000
+
+  datanode:
+    image: hadoop-base
+    container_name: datanode
+    networks:
+      - hadoopspark
+    volumes:
+      - shared-workspace:/opt/workspace
+      - datanode:/hadoop/dfs/specificmount
+    env_file:
+      - ./hadoop.env
+    environment:
+      SERVICE_PRECONDITION: "namenode:9870"
+    command: /hadoop-runscripts/run_datanode.sh
+    depends_on:
+      - namenode
+
+  resourcemanager:
+    image: hadoop-base
+    container_name: resourcemanager
+    networks:
+      - hadoopspark
+    volumes:
+      - shared-workspace:/opt/workspace
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864"
+    env_file:
+      - ./hadoop.env
+    command: /hadoop-runscripts/run_resourcemanager.sh
+    depends_on:
+      - namenode
+      - datanode
+    ports:
+      - 8030:8030
+      - 8031:8031
+      - 8032:8032
+      - 8088:8088
+
+  nodemanager:
+    image: hadoop-base
+    container_name: nodemanager
+    networks:
+      - hadoopspark
+    volumes:
+      - shared-workspace:/opt/workspace
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
+    command: /hadoop-runscripts/run_nodemanager.sh
+    depends_on:
+      - namenode
+      - datanode
+      - resourcemanager
+
+  historyserver:
+    image: hadoop-base
+    container_name: historyserver
+    networks:
+      - hadoopspark
+    volumes:
+      - shared-workspace:/opt/workspace
+      - hadoop_historyserver:/hadoop/dfs/specificmount
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 datanode:9864 resourcemanager:8088"
+    env_file:
+      - ./hadoop.env
+    command: /hadoop-runscripts/run_historyserver.sh
+    depends_on:
+      - namenode
+      - datanode
+      - resourcemanager
+    ports:
+      - 8188:8188
+      - 10200:10200
+
+  #https://github.com/catyku/postgresql-pgadmin
+  #https://www.pgadmin.org/docs/pgadmin4/latest/container_deployment.html
+  #https://graspingtech.com/docker-compose-postgresql/
+  #https://docs.datafabric.hpe.com/62/Hive/config-remote-postgres-db-hive-metastore.html
+  #https://github.com/big-data-europe/docker-hive/blob/master/docker-compose.yml
+  #https://www.itread01.com/content/1546740737.html
+  #https://blog.yslifes.com/archives/2834
+
+  hive-server:
+    image: hive
+    networks:
+      - hadoopspark
+    container_name: hive-server
+    env_file:
+      - ./hadoop-hive.env
+    environment:
+      HIVE_CORE_CONF_javax_jdo_option_ConnectionURL: "jdbc:postgresql://hive-metastore/metastore"
+      SERVICE_PRECONDITION: "hive-metastore:9083"
+    volumes:
+      - shared-workspace:/opt/workspace
+    ports:
+      - 10000:10000
+      - 10002:10002
+    depends_on:
+      - namenode
+      - hive-metastore-postgresql
+      - hive-metastore
+
+  #/opt/hive/bin/hive --service metastore
+  hive-metastore:
+    image: hive
+    container_name: hive-metastore
+    networks:
+      - hadoopspark
+    env_file:
+      - ./hadoop-hive.env
+    command: /usr/local/bin/init_metastore.sh
+    environment:
+      SERVICE_PRECONDITION: "namenode:9000 namenode:9870 hive-metastore-postgresql:5432"
+    volumes:
+      - shared-workspace:/opt/workspace
+    ports:
+      - 9083:9083
+    depends_on:
+      - hive-metastore-postgresql
+      - namenode
+
+  hive-metastore-postgresql:
+    image: hive-metastore-postgresql
+    container_name: hive-metastore-postgresql
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      PGDATA: /data/postgres
+    volumes:
+      - shared-workspace:/opt/workspace
+      - postgres:/data/postgres
+    networks:
+      - hadoopspark
+    env_file:
+      - ./hadoop-hive.env
+    ports:
+      - 5432:5432
+  
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:-pgadmin@pgadmin.org}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:-admin}
+    volumes:
+      - shared-workspace:/opt/workspace
+      - pgadmin:/root/.pgadmin
+    ports:
+      - "${PGADMIN_PORT:-5050}:80"
+    networks:
+      - hadoopspark
+
+  jupyterhub:
+    image: jupyterhub-run_pyr
+    container_name: jupyterhub
+    ports:
+      - 8888:8000
+      - 8787:8787
+    volumes:
+      - shared-workspace:/opt/workspace
+    networks:
+      - hadoopspark
+
+  spark-master:
+    image: spark-base
+    container_name: spark-master
+    ports:
+      - 8080:8080
+      - 7077:7077
+    volumes:
+      - shared-workspace:/opt/workspace
+    command: bash /run_spark-master.sh
+    networks:
+      - hadoopspark
+
+  spark-worker:
+    image: spark-base
+    container_name: spark-worker
+    environment:
+      - SPARK_WORKER_CORES=12
+      - SPARK_WORKER_MEMORY=1024m
+    ports:
+      - 8081:8081
+    volumes:
+      - shared-workspace:/opt/workspace
+    command: bash /run_spark-worker.sh
+    depends_on:
+      - spark-master
+    networks:
+      - hadoopspark
+
+#https://stackoverflow.com/questions/61243141/kafka-docker-compose-external-connection
+#https://stackoverflow.com/questions/35217603/kafka-python-consumer-not-receiving-messages
+#https://github.com/bitnami/bitnami-docker-kafka/issues/29
+#https://gist.github.com/rmoff/fb7c39cc189fc6082a5fbd390ec92b3d
+#https://www.baeldung.com/ops/kafka-docker-setup
+
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: zookeeper
+    networks: 
+      - hadoopspark
+    ports:
+      - 2181:2181
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - shared-workspace:/opt/workspace
+
+  kafka-0:
+    image: confluentinc/cp-kafka:latest
+    container_name: kafka-0
+    networks: 
+      - hadoopspark
+    depends_on:
+      - zookeeper
+    ports:
+      - 9092:9092
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      #KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://127.0.0.1:29092,PLAINTEXT_HOST://127.0.0.1:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka-0:29092,PLAINTEXT_HOST://192.168.1.106:9092
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      ALLOW_PLAINTEXT_LISTENER: yes
+    volumes:
+      - shared-workspace:/opt/workspace
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop:latest
+    container_name: kafdrop
+    networks: 
+      - hadoopspark
+    depends_on:
+      - kafka-0
+    ports:
+      - 19000:9000
+    environment:
+      KAFKA_BROKERCONNECT: kafka-0:29092
+    volumes:
+      - shared-workspace:/opt/workspace
+
+  #https://gethue.com/how-to-configure-hue-in-your-hadoop-cluster/
+  #https://docs.cloudera.com/HDPDocuments/HDP3/HDP-3.1.0/administration/content/yarn-ports.html
+  hue:
+    image: gethue/hue:latest
+    networks:
+      - hadoopspark
+    container_name: hue
+    volumes:
+      - shared-workspace:/opt/workspace
+    ports:
+      - 7888:8888
+    depends_on:
+      - namenode
+      - hive-server
+
+volumes:
+  namenode:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /host_mnt/d/Docker/volume/hadoop/namenode
+  datanode:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /host_mnt/d/Docker/volume/hadoop/datanode
+  hadoop_historyserver:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /host_mnt/d/Docker/volume/hadoop/historyserver
+  shared-workspace:
+    name: "shared-workspace"
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /host_mnt/e/scripts/data-engineer-practice
+  postgres:
+    name: "postgres"
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /host_mnt/d/Docker/volume/postgres
+  pgadmin:
+
+networks:
+  hadoopspark:
+    name: hadoopspark
