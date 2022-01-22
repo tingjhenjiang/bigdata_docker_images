@@ -1,5 +1,5 @@
-ARG debian_buster_image_tag=8-jdk-buster
-FROM openjdk:${debian_buster_image_tag}
+ARG debian_bullseye_image_tag=8-jdk-bullseye
+FROM openjdk:${debian_bullseye_image_tag}
 
 # -- Layer: hadoop-base
 

@@ -1,4 +1,4 @@
-ARG debian_buster_image_tag=11-jdk-buster
+ARG debian_bullseye_image_tag=11-jdk-bullseye
 FROM openjdk:${debian_buster_image_tag}
 
 # -- Layer: Apache Spark

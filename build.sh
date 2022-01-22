@@ -1,6 +1,6 @@
 # -- Software Stack Version
 
-PYTHON_VERSION="3.7" #has to match the system's python version
+PYTHON_VERSION="3.9" #has to match the system's python version
 SPARK_VERSION="3.2.0"
 HADOOP_VERSION="3.2"
 HADOOP_VERSION_detailed="3.2.2"
@@ -28,6 +28,13 @@ docker build \
   --build-arg SCALA_DETAILED_VERSION="$SCALA_DETAILED_VERSION" \
   --build-arg ALMOND_VERSION="$ALMOND_VERSION" \
   -f jupyterhub-run_pyr.Dockerfile -t jupyterhub-run_pyr .
+
+docker build \
+  --build-arg SPARK_VERSION="$SPARK_VERSION" \
+  --build-arg SCALA_DETAILED_VERSION="$SCALA_DETAILED_VERSION" \
+  --build-arg ALMOND_VERSION="$ALMOND_VERSION" \
+  --build-arg PYTHON_VERSION="$PYTHON_VERSION" \
+  -f jupyterhub-cuda-run_pyr.Dockerfile -t jupyterhub-cuda-run_pyr .
 
 docker build \
   --build-arg HIVE_VERSION="$HIVE_VERSION" \

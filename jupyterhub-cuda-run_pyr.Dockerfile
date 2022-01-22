@@ -1,5 +1,4 @@
-ARG debian_bullseye_image_tag=11-jdk-bullseye
-FROM openjdk:${debian_bullseye_image_tag}
+FROM nvidia/cuda:11.5.1-cudnn8-devel-ubuntu20.04
 
 # -- Layer: cluster-base
 
@@ -28,8 +27,9 @@ RUN for USER in `echo "${NB_USERs}" | grep -o -e "[^;]*"` ; do \
         ln -s ${SHARED_WORKSPACE} /home/$USER/workspace ; \
     done
 
-RUN apt-get update -y && \
-    apt-get install -y python3 python3-pip python3-venv wget rustc build-essential libssl-dev libffi-dev python3-dev python3-setuptools vim curl software-properties-common && \
+RUN sed -i 's|http://archive.ubuntu.com|http://free.nchc.org.tw|g' /etc/apt/sources.list && \
+    apt-get update -y && \
+    TZ="Asia/Taipei" DEBIAN_FRONTEND="noninteractive" apt-get install -y python3 python3-pip python3-venv wget rustc build-essential libssl-dev libffi-dev python3-dev python3-setuptools vim curl software-properties-common && \
     python3 -m venv /opt/jupyterhub/ && \
     /opt/jupyterhub/bin/python3 -m pip install -U pip --no-cache-dir && \
     /opt/jupyterhub/bin/python3 -m pip install wheel --no-cache-dir && \
@@ -40,7 +40,11 @@ RUN apt-get update -y && \
     mkdir -p /opt/jupyterhub/etc/jupyterhub/ && \
     cd /opt/jupyterhub/etc/jupyterhub/ && \
     /opt/jupyterhub/bin/jupyterhub --generate-config && \
-    echo "c.Spawner.default_url = '/lab'" >> /opt/jupyterhub/etc/jupyterhub/jupyterhub_config.py
+    echo "c.Spawner.default_url = '/lab'" >> /opt/jupyterhub/etc/jupyterhub/jupyterhub_config.py && \
+    rm -rf /var/lib/apt/lists*/ && \
+    rm -Rf /tmp/* && \
+    apt-get clean && \
+    apt-get autoclean
 
 RUN chmod 775 /opt/jupyterhub -R && chmod 771 ${SHARED_WORKSPACE} -R && \
     chgrp $NB_GID /opt/jupyterhub -R && chgrp $NB_GID ${SHARED_WORKSPACE} -R
@@ -94,33 +98,32 @@ RUN . /envvarset.sh && \
 
 RUN . /envvarset.sh && \
     ${CONDA_PATH}/bin/conda create --prefix ${CONDA_PATH}/envs/python python=$pyverstring pip ipykernel requests pandas numpy scikit-learn scipy matplotlib pyspark git -y -c conda-forge && \
-    ${PY_BIN_in_CONDA} -m ipykernel install --prefix=/opt/jupyterhub/ --name python_$PYVER_without_dot --display-name "Python (data science default)" && \
+    ${PY_BIN_in_CONDA} -m ipykernel install --name python_$PYVER_without_dot --display-name "Python (data science default)"  --prefix=/opt/jupyterhub/ && \
     ${CONDA_PATH}/bin/conda clean -a -y
 
-RUN printf "apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/debian11/x86_64/7fa2af80.pub && \
-            \nadd-apt-repository 'deb https://developer.download.nvidia.com/compute/cuda/repos/debian11/x86_64/ /' && \
-            \nadd-apt-repository contrib && \
-            \napt-get update && \
-            \napt-get -y install cuda && \
-            \n$CONDA_PATH/envs/python/bin/pip3 install torch>=1.10.1+cu113 torchvision>=0.11.2+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html --no-cache-dir && \
-            \n$CONDA_PATH/envs/python/bin/pip3 install tensorflow --no-cache-dir" > /installcuda.sh && \
-    chmod +x /installcuda.sh
+RUN apt-get update -y && \
+    apt-get -y install nvidia-driver-495 && \
+    ${CONDA_PATH}/envs/python/bin/pip3 install torch>=1.10.1+cu113 torchvision>=0.11.2+cu113 -f https://download.pytorch.org/whl/cu113/torch_stable.html --no-cache-dir && \
+    ${CONDA_PATH}/envs/python/bin/pip3 install tensorflow --no-cache-dir && \
+    rm -rf /var/lib/apt/lists*/ && \
+    rm -Rf /tmp/* && \
+    apt-get clean && \
+    apt-get autoclean
 
 ENV RETICULATE_PYTHON=${PY_BIN_in_CONDA}
 
 #multiarch-support
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends sudo file libapparmor1 libclang-dev libcurl4-openssl-dev libedit2 libssl-dev lsb-release psmisc procps libpq5 && \
+RUN apt update -y && apt-get install -y --no-install-recommends sudo file libapparmor1 libclang-dev libcurl4-openssl-dev libedit2 libssl-dev lsb-release psmisc procps libpq5 && \
     if [ -z "$RSTUDIO_VERSION" ]; \
         then RSTUDIO_URL="https://www.rstudio.org/download/latest/stable/server/bionic/rstudio-server-latest-amd64.deb"; \
         else RSTUDIO_URL="http://download2.rstudio.org/server/bionic/amd64/rstudio-server-${RSTUDIO_VERSION}-amd64.deb"; fi && \
     wget -q $RSTUDIO_URL && \
     dpkg -i rstudio-server-*-amd64.deb && \
     rm rstudio-server-*-amd64.deb && \
-    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /var/lib/apt/lists*/ && \
+    rm -Rf /tmp/* && \
     apt-get clean && \
-    apt-get autoclean && \
-    rm -Rf /tmp/*
+    apt-get autoclean
 
 RUN ${CONDA_PATH}/bin/conda create --prefix ${CONDA_PATH}/envs/r -c conda-forge r-base r-sparklyr r-devtools r-irkernel git -y && \
     ${CONDA_PATH}/bin/conda clean -a -y
@@ -133,9 +136,6 @@ RUN ln -s /usr/lib/rstudio-server/bin/pandoc/pandoc /usr/local/bin && \
     mkdir -p /opt/pandoc/templates && \
     cp -r pandoc-templates*/* /opt/pandoc/templates && rm -rf pandoc-templates* && \
     mkdir /root/.pandoc && ln -s /opt/pandoc/templates /root/.pandoc/templates && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/ && \
-    rm -Rf /tmp/* && \
     ## RStudio wants an /etc/R, will populate from $R_HOME/etc
     mkdir -p /etc/R && \
     ## Write config files in $R_HOME/etc
@@ -186,13 +186,20 @@ RUN chgrp $NB_GID ${CONDA_PATH}/envs/r -R && \
 # https://almond.sh/docs/quick-start-install
 # https://github.com/almond-sh/almond/issues/729
 ENV COURSIER_CACHE=/usr/share/coursier/cache
-RUN curl -Lo coursier https://git.io/coursier-cli && \
+ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+ENV PATH=$PATH:$JAVA_HOME/bin
+RUN apt update -y && apt-get install openjdk-8-jdk -y && \
+    curl -Lo coursier https://git.io/coursier-cli && \
     chmod +x coursier && \
     mkdir /usr/share/coursier/cache -p && \
     ./coursier launch --fork "almond:${ALMOND_VERSION}" --scala "${SCALA_DETAILED_VERSION}" -- --install --id "almond" --jupyter-path "/opt/jupyterhub/share/jupyter/kernels" --display-name "Scala (almond)" && \
     chgrp -R $NB_GID /usr/share/coursier && \
     chmod -R g+rwxs /usr/share/coursier && \
-    rm ./coursier
+    rm ./coursier && \
+    rm -rf /var/lib/apt/lists/ && \
+    rm -Rf /tmp/* && \
+    apt-get clean && \
+    apt-get autoclean
 
 #beakerx java part:
 # would appear message: [InstallKernelSpec] Installed kernelspec java in /opt/jupyterhub/share/jupyter/kernels/java
@@ -203,9 +210,10 @@ RUN . /envvarset.sh && \
     chgrp $NB_GID ${CONDA_PATH}/envs/beakerx -R && \
     chmod 775 ${CONDA_PATH}/envs/beakerx -R && \
     ${CONDA_PATH}/bin/conda clean -a -y && \
+    rm -rf /var/lib/apt/lists/ && \
+    rm -Rf /tmp/* && \
     apt-get clean && \
-    apt-get autoclean && \
-    rm -Rf /tmp/*
+    apt-get autoclean
 
 #/opt/conda/envs/beakerx/bin/beakerx_kernel_autotranslation
 #/opt/conda/envs/beakerx/bin/beakerx_tabledisplay
