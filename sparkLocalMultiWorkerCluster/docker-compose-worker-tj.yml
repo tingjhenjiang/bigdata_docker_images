@@ -1,0 +1,36 @@
+version: '2'
+
+services:
+  spark-worker:
+    image: docker.io/bitnami/spark:latest
+    ports:
+      - '8081:8081'
+      - '7080:7080'
+      - '10211-10219:10211-10219'
+      - '42000:42000'
+      - '42005:42005'
+    hostname: ENW2
+    extra_hosts:
+      - EN:192.168.1.25
+      - ENM:192.168.1.25
+      - ENW:192.168.1.25
+      - EN2:192.168.1.132
+      - ENW2:0.0.0.0
+    restart: always
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://ENM:7077
+      - SPARK_WORKER_MEMORY=30G
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_PUBLIC_DNS=EN
+      - SPARK_WORKER_PORT=7080
+      - SPARK_LOCAL_HOSTNAME=ENW
+      - SPARK_IDENT_STRING=ENW
+      - SPARK_DRIVER_HOST=ENW
+      - SPARK_DRIVER_PORT=10211
+    volumes:
+      - /d/spark-latest/conf:/opt/bitnami/spark/conf
+      - /d/spark-latest/jars:/opt/bitnami/spark/jars

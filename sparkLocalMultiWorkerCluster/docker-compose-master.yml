@@ -1,0 +1,69 @@
+version: '2.1'
+
+services:
+  spark:
+    image: docker.io/bitnami/spark:3.3.1
+    container_name: spark
+    hostname: ENM
+    extra_hosts:
+      - EN:192.168.1.10
+      - ENM:192.168.1.10
+      - ENW:192.168.1.10
+      - EN2:192.168.1.20
+      - ENW2:192.168.1.20
+    environment:
+      - SPARK_MODE=master
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_MASTER_HOST=0.0.0.0
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8081
+      - SPARK_PUBLIC_DNS=EN
+    ports:
+      - '8081:8081'
+      - '7077:7077'
+    expose:
+      - '42000'
+      - '42005'
+    restart: always
+    network_mode: bridge
+    volumes:
+      - /e/spark/conf:/opt/bitnami/spark/conf
+      - /e/spark/jars:/opt/bitnami/spark/jars
+  spark-worker-32g:
+    image: docker.io/bitnami/spark:3.3.1
+    container_name: spark-worker-32g
+    extra_hosts:
+      - EN:192.168.1.10
+      - ENM:192.168.1.10
+      - ENW:0.0.0.0
+      - EN2:192.168.1.20
+      - ENW2:192.168.1.20
+    ports:
+      - '8083:8083'
+      - '7081:7081'
+      - '42005:42005'
+    expose:
+      - '42000'
+    restart: always
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://ENM:7077
+      - SPARK_WORKER_MEMORY=48G
+      - SPARK_RPC_AUTHENTICATION_ENABLED=no
+      - SPARK_RPC_ENCRYPTION_ENABLED=no
+      - SPARK_LOCAL_STORAGE_ENCRYPTION_ENABLED=no
+      - SPARK_SSL_ENABLED=no
+      - SPARK_WORKER_WEBUI_PORT=8083
+      - SPARK_WORKER_PORT=7081
+      - SPARK_PUBLIC_DNS=EN
+      - SPARK_LOCAL_HOSTNAME=ENW
+      - SPARK_IDENT_STRING=ENW
+    depends_on:
+      - spark
+    network_mode: bridge
+    volumes:
+      - /e/spark/conf:/opt/bitnami/spark/conf
+      - /e/spark/jars:/opt/bitnami/spark/jars
